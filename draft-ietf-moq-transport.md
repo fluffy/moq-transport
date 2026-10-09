@@ -1520,7 +1520,7 @@ and selects the top MaxTracks from the remaining tracks.
 When multiple downstream subscribers use Policy 0x0 with the same
 Property Type on the same namespace, the global sorted list is
 computed once; per-subscriber evaluation is a filtered walk of that
-list.  The relay MUST maintain at least Max(MaxTracks_i) + E tracks
+list.  The relay MUST maintain at least Max(MaxTracks_i) + Max(E_i) tracks
 in its upstream subscription, where MaxTracks_i is the MaxTracks
 value for each downstream subscriber i and E is the number of that
 subscriber's own published tracks that appear in the global sorted
