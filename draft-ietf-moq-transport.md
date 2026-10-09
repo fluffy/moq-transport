@@ -1273,8 +1273,8 @@ DESELECTED to SELECTED:
   also updates the Joining Location.
 
 DESELECTED to UNKNOWN:
-: The publisher sends PUBLISH_DONE or receives UNSUBSCRIBE to purge state 
-  for this track.  If the track is later selected again, a new PUBLISH is 
+: The publisher sends PUBLISH_DONE or receives UNSUBSCRIBE to purge state
+  for this track.  If the track is later selected again, a new PUBLISH is
   required.
 
 This state machine is used identically by all selection policies and
@@ -1295,14 +1295,14 @@ published within the matching namespace are implicitly members of one
 selection set.
 
 Explicit Membership: The subscriber includes a SELECTION_SET_ASSIGNMENT
-parameter ({{selection-set-assignment}}) in SUBSCRIBE, PUBLISH_OK or 
-REQUEST_UPDATE. This assigns individual tracks to selection sets 
+parameter ({{selection-set-assignment}}) in SUBSCRIBE, PUBLISH_OK or
+REQUEST_UPDATE. This assigns individual tracks to selection sets
 identified by Set ID.
 
 A track that is a member of a selection set may be selected or
 deselected by the selection policy as conditions change (e.g., a
 higher-ranked track appears in Top-N, or available bandwidth changes
-in Bandwidth-Aware).  
+in Bandwidth-Aware).
 
 A track is removed from a selection set entirely when the subscription
 ends (UNSUBSCRIBE or PUBLISH_DONE), a new SELECTION_SET_ASSIGNMENT
