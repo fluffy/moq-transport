@@ -1174,14 +1174,14 @@ that track.
 ## Multi-Track Selection and Switching {#selection-sets}
 
 When a subscriber is interested in a set of tracks but only needs a
-dynamic subset at any given time, the publisher must decide which
-tracks to forward and adapt that decision as conditions change.
-Selection Policies provide the mechanism for this: each Selection
-Policy pairs a Selection Set (which tracks are evaluated together)
-with a Policy Algorithm (how to choose among them).  A subscription carries
-an ordered list of Selection Policies, enabling hierarchical
-selection — for example, first selecting the most active speakers,
-then picking the best video quality for each.
+dynamic subset at any given time, the publisher must decide which tracks
+to forward and adapt that decision as conditions change.  Selection
+Policies provide the mechanism for this: each Selection Policy pairs a
+Selection Set (which tracks are evaluated together) with a Policy
+Algorithm (how to choose among them).  A subscription carries an ordered
+list of Selection Policies, enabling hierarchical selection — for
+example, first selecting the most active speakers, then picking the best
+video quality for each.
 
 ### Selection Policies {#selection-policy-definition}
 
@@ -1212,30 +1212,31 @@ order: the first policy evaluates all tracks in its set, and each
 subsequent policy evaluates only the tracks that were selected by the
 previous policy, within its own selection set.  A track is forwarded
 only if it is selected by every policy in the list.  The state machine
-({{selection-state-machine}}) applies to the final selected state
-after the entire list has been evaluated.
+({{selection-state-machine}}) applies to the final selected state after
+the entire list has been evaluated.
 
 How Selection Policies are assigned to tracks is described in
 {{selection-set-membership}}.
 
 ### Selection Sets {#selection-set-definition}
 
-A **Selection Set** is a group of tracks that are evaluated together
-by a policy algorithm.  Each set is identified by a Set ID (varint,
-unique within the session).
+A **Selection Set** is a group of tracks that are evaluated together by
+a policy algorithm.  Each set is identified by a Set ID (varint, unique
+within the session).
 
 The same track MAY appear in different sets under different Selection
 Policies in its ordered list.  For example, a video track might be in:
 
 - Set 1 under a Top-N policy (competing with all video-hi tracks to
   determine which users are most active), and
+
 - Set 10 under a Bandwidth-Aware policy (grouped with the same user's
   quality alternatives to determine which resolution to forward).
 
 Each track in a selection set is either *selected* (objects are
 forwarded) or *deselected* (objects are not forwarded, but the track
-remains a member of the set).  This allows efficient reselection
-without re-subscribing.
+remains a member of the set).  This allows efficient reselection without
+re-subscribing.
 
 A selection set is created when the first track is assigned to its
 Set ID (via TRACK_SELECTION or SELECTION_SET_ASSIGNMENT).  A set is
@@ -1291,9 +1292,9 @@ DESELECTED to SELECTED:
   also updates the Joining Location.
 
 DESELECTED to UNKNOWN:
-: The publisher sends PUBLISH_DONE or receives UNSUBSCRIBE to purge state
-  for this track.  If the track is later selected again, a new PUBLISH is
-  required.
+: The publisher sends PUBLISH_DONE or receives UNSUBSCRIBE to purge
+  state for this track.  If the track is later selected again, a new
+  PUBLISH is required.
 
 This state machine is used identically by all selection policies and
 switch modes.
@@ -1306,10 +1307,10 @@ to purge old deselected tracks and bound memory usage.
 #### Selection Set Membership {#selection-set-membership}
 
 Tracks are assigned to selection sets through one of three paths,
-depending on how the track is discovered and subscribed.
-In all cases below, a track's selection policies are expressed as an ordered
-list of entries, where each entry pairs a Set ID with a Policy
-Algorithm.  The entries are evaluated in order as declaration.
+depending on how the track is discovered and subscribed.  In all cases
+below, a track's selection policies are expressed as an ordered list of
+entries, where each entry pairs a Set ID with a Policy Algorithm.  The
+entries are evaluated in order as declaration.
 
 
 SUBSCRIBE_TRACKS + TRACK_SELECTION:
@@ -1340,8 +1341,8 @@ SUBSCRIBE + SELECTION_SET_ASSIGNMENT:
 
 A track that is a member of a selection set may be selected or
 deselected by the selection policy as conditions change (e.g., a
-higher-ranked track appears in Top-N, or available bandwidth changes
-in Bandwidth-Aware).
+higher-ranked track appears in Top-N, or available bandwidth changes in
+Bandwidth-Aware).
 
 A track is removed from its selection sets entirely when the
 subscription ends (UNSUBSCRIBE or PUBLISH_DONE), a new
@@ -1352,9 +1353,9 @@ deleted.
 
 ### Selection Policy Algorithms {#selection-policies}
 
-A selection policy algorithm determines which members of a selection
-set are in the selected subset.  Algorithms are identified by a
-Policy ID (varint) and registered in an IANA registry
+A selection policy algorithm determines which members of a selection set
+are in the selected subset.  Algorithms are identified by a Policy ID
+(varint) and registered in an IANA registry
 ({{iana-selection-policies}}).
 
 An endpoint advertises supported algorithms in SETUP via the
@@ -1363,9 +1364,9 @@ MUST NOT send a TRACK_SELECTION or SELECTION_SET_ASSIGNMENT with a
 Policy ID not in the peer's SELECTION_POLICIES list.
 
 A TRACK_SELECTION parameter contains a chain of zero or more policy
-entries.  Each policy entry carries its own Set ID, which groups
-tracks for that policy's evaluation.  When multiple entries are
-present, they form an ordered pipeline as described in
+entries.  Each policy entry carries its own Set ID, which groups tracks
+for that policy's evaluation.  When multiple entries are present, they
+form an ordered pipeline as described in
 {{selection-policy-definition}}.
 
 #### Policy 0x0: Top-N Selection {#top-n-policy}
@@ -1376,8 +1377,9 @@ highest values for a specified Track or Object Property.
 The TRACK_SELECTION parameter with Policy ID 0x0 includes:
 
 - Property Type (vi64): The Track or Object Property used for ranking.
-  MUST be even, i.e. a single integer value (see {{moq-key-value-pair}}).
-  Object Property values override Track Property values of the same type.
+  MUST be even, i.e. a single integer value (see
+  {{moq-key-value-pair}}).  Object Property values override Track
+  Property values of the same type.
 
 - MaxTracks (vi64): Maximum number of tracks selected concurrently.
   MUST NOT be 0.  MUST NOT exceed MAX_SELECTED_TRACKS
@@ -1411,11 +1413,10 @@ Selection Rules:
    changes.
 
 If a track in the namespace is also individually subscribed via
-SUBSCRIBE, its state MUST NOT be modified by the Top-N selection.
-The individually subscribed track does not count against MaxTracks.
+SUBSCRIBE, its state MUST NOT be modified by the Top-N selection.  The
+individually subscribed track does not count against MaxTracks.
 
-Relay behavior for Top-N is described in
-{{relay-selection-sets}}.
+Relay behavior for Top-N is described in {{relay-selection-sets}}.
 
 #### Policy 0x1: Bandwidth-Aware Selection {#bw-aware-policy}
 
@@ -1474,8 +1475,8 @@ its members are removed.
 
 ### Switch Modes {#switch-modes}
 
-A switch mode defines how the transition between tracks is executed
-at the media delivery level.  Switch modes are used by both
+A switch mode defines how the transition between tracks is executed at
+the media delivery level.  Switch modes are used by both
 publisher-driven transitions (selection sets, {{selection-sets}}) and
 subscriber-initiated switches (SWITCH_FROM, {{switch-from}}).  Switch
 modes are identified by a varint and registered in an IANA registry
@@ -1483,8 +1484,8 @@ modes are identified by a varint and registered in an IANA registry
 
 #### Immediate Switch (Mode 0x0) {#immediate-switch}
 
-> Note: This mode was previously referred to as "Hard Switch" in
-> earlier discussions.
+> Note: This mode was previously referred to as "Hard Switch" in earlier
+> discussions.
 
 Immediate Switch MUST be supported by all endpoints that support
 selection sets or subscriber-initiated switching.
@@ -1507,40 +1508,43 @@ When a track is selected (publisher-driven) or activated
 ### Subscriber-Initiated Switching {#subscriber-switching}
 
 A subscriber can explicitly switch between two subscriptions by
-including the SWITCH_FROM parameter ({{switch-from}}) in a SUBSCRIBE
-or REQUEST_UPDATE on the activating subscription.  This enables
-subscriber-driven track switching (e.g., ABR quality changes,
-alternate camera angles) using the same switch mode semantics as
-publisher-driven selection set transitions.
+including the SWITCH_FROM parameter ({{switch-from}}) in a SUBSCRIBE or
+REQUEST_UPDATE on the activating subscription.  This enables
+subscriber-driven track switching (e.g., ABR quality changes, alternate
+camera angles) using the same switch mode semantics as publisher-driven
+selection set transitions.
 
 On receiving SWITCH_FROM, the publisher:
 
 1. Validates that Switch From Request ID identifies an existing
    subscription and is not the same as the activating subscription's
-   Request ID.  If invalid, the publisher responds with
-   REQUEST_ERROR `INVALID_SWITCH`.
+   Request ID.  If invalid, the publisher responds with REQUEST_ERROR
+   `INVALID_SWITCH`.
 
 2. Applies the switch mode specified in the SWITCH_FROM parameter to
-   stop delivery on the suspending subscription and begin delivery
-   on the activating subscription.
+   stop delivery on the suspending subscription and begin delivery on
+   the activating subscription.
 
 3. If the Publish Done flag is 1, sends PUBLISH_DONE with code
    SWITCHED_AWAY on the suspending subscription after the switch
-   completes.  Otherwise the suspending subscription remains
-   established for potential reuse.
+   completes.  Otherwise the suspending subscription remains established
+   for potential reuse.
 
 If the publisher cannot begin delivery on the activating subscription,
 it MUST leave the suspending subscription unchanged.
 
 ### Relay Behavior for Selection Sets {#relay-selection-sets}
 
-A relay implementing selection sets follows the same processing
-pipeline regardless of policy algorithm:
+A relay implementing selection sets follows the same processing pipeline
+regardless of policy algorithm:
 
 1. Receive objects from upstream and extract property values.
+
 2. Evaluate the ordered Selection Policies for each affected track,
    processing each policy's selection set in order.
+
 3. Determine which tracks changed state (promoted or demoted).
+
 4. Apply the switch mode and send PUBLISH, PUBLISH_STATE_NOTIFY, or
    PUBLISH_DONE as appropriate.
 
@@ -1550,23 +1554,23 @@ For namespace-scoped selection sets (Policy 0x0), the relay MUST
 subscribe to all tracks in the namespace upstream to evaluate the
 policy.
 
-A relay maintains a single sorted list of tracks by Property
-Type value for each selection set, shared across all subscribers.  For each downstream
-subscriber, the relay excludes that subscriber's own published tracks
-and selects the top MaxTracks from the remaining tracks.
+A relay maintains a single sorted list of tracks by Property Type value
+for each selection set, shared across all subscribers.  For each
+downstream subscriber, the relay excludes that subscriber's own
+published tracks and selects the top MaxTracks from the remaining
+tracks.
 
 When multiple downstream subscribers use Policy 0x0 with the same
-Property Type on the same namespace, the global sorted list is
-computed once; per-subscriber evaluation is a filtered walk of that
-list.  The relay MUST maintain at least Max(MaxTracks_i) + Max(E_i) tracks
-in its upstream subscription, where MaxTracks_i is the MaxTracks
-value for each downstream subscriber i and E is the number of that
-subscriber's own published tracks that appear in the global sorted
-list.  This ensures the relay has enough candidates to fill every
-subscriber's top set after per-subscriber exclusions.  If a
-downstream subscriber increases its MaxTracks via REQUEST_UPDATE, the
-relay MUST expand its upstream subscription before responding with
-updated selections.
+Property Type on the same namespace, the global sorted list is computed
+once; per-subscriber evaluation is a filtered walk of that list.  The
+relay MUST maintain at least Max(MaxTracks_i) + Max(E_i) tracks in its
+upstream subscription, where MaxTracks_i is the MaxTracks value for each
+downstream subscriber i and E is the number of that subscriber's own
+published tracks that appear in the global sorted list.  This ensures
+the relay has enough candidates to fill every subscriber's top set after
+per-subscriber exclusions.  If a downstream subscriber increases its
+MaxTracks via REQUEST_UPDATE, the relay MUST expand its upstream
+subscription before responding with updated selections.
 
 #### Bandwidth-Aware Relay Behavior
 
