@@ -1312,7 +1312,6 @@ below, a track's selection policies are expressed as an ordered list of
 entries, where each entry pairs a Set ID with a Policy Algorithm.  The
 entries are evaluated in order as declaration.
 
-
 SUBSCRIBE_TRACKS + TRACK_SELECTION:
 : The subscriber includes a TRACK_SELECTION parameter
   ({{track-selection-param}}) in SUBSCRIBE_TRACKS.  Each Policy Entry
