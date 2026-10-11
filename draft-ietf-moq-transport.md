@@ -1178,7 +1178,7 @@ dynamic subset at any given time, the publisher must decide which
 tracks to forward and adapt that decision as conditions change.
 Selection Policies provide the mechanism for this: each Selection
 Policy pairs a Selection Set (which tracks are evaluated together)
-with a Policy Algorithm (how to choose among them).  A track carries
+with a Policy Algorithm (how to choose among them).  A subscription carries
 an ordered list of Selection Policies, enabling hierarchical
 selection — for example, first selecting the most active speakers,
 then picking the best video quality for each.
@@ -1186,7 +1186,7 @@ then picking the best video quality for each.
 ### Selection Policies {#selection-policy-definition}
 
 A **Selection Policy** assigns a Selection Set to a Policy Algorithm.
-Each track carries an ordered list of Selection Policies:
+Each subscription carries an ordered list of Selection Policies:
 
 ~~~
     +--- Ordered List of Selection Policies per track ---------+
@@ -1208,9 +1208,9 @@ Each track carries an ordered list of Selection Policies:
 ~~~
 
 When multiple Selection Policies are present, they are evaluated in
-order: the first policy evaluates all tracks in its sets, and each
+order: the first policy evaluates all tracks in its set, and each
 subsequent policy evaluates only the tracks that were selected by the
-previous policy, within its own set groupings.  A track is forwarded
+previous policy, within its own selection set.  A track is forwarded
 only if it is selected by every policy in the list.  The state machine
 ({{selection-state-machine}}) applies to the final selected state
 after the entire list has been evaluated.
@@ -1334,7 +1334,8 @@ SUBSCRIBE + SELECTION_SET_ASSIGNMENT:
 : For explicit subscriptions where tracks are known upfront, the
   subscriber includes a SELECTION_SET_ASSIGNMENT parameter
   ({{selection-set-assignment}}) in SUBSCRIBE.  This assigns the
-  track's ordered list of policy entries directly at subscription
+  track's being subscribed to the subscript sets that
+  ordered in the policy list t subscription
   time.
 
 A track that is a member of a selection set may be selected or
@@ -1549,8 +1550,8 @@ For namespace-scoped selection sets (Policy 0x0), the relay MUST
 subscribe to all tracks in the namespace upstream to evaluate the
 policy.
 
-A relay maintains a single global sorted list of tracks by Property
-Type value, shared across all subscribers.  For each downstream
+A relay maintains a single sorted list of tracks by Property
+Type value for each selection set, shared across all subscribers.  For each downstream
 subscriber, the relay excludes that subscriber's own published tracks
 and selects the top MaxTracks from the remaining tracks.
 
