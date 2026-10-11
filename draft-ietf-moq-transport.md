@@ -1171,59 +1171,77 @@ PUBLISH downstream.
 If desired, the subscriber can issue a SUBSCRIBE to establish a subscription to
 that track.
 
-## Selection Sets {#selection-sets}
+## Multi-Track Selection and Switching {#selection-sets}
 
-When a subscriber is interested in a set of tracks
-but only needs a dynamic subset at any given time , the
-publisher must decide which tracks to forward and adapt that decision
-as conditions change.  Selection Sets provide the mechanism for this:
-they let the subscriber declare a group of candidate tracks and a
-policy, and the publisher continuously evaluates that policy to
-forward only the tracks that currently matter.
+When a subscriber is interested in a set of tracks but only needs a
+dynamic subset at any given time, the publisher must decide which
+tracks to forward and adapt that decision as conditions change.
+Selection Policies provide the mechanism for this: each Selection
+Policy pairs a Selection Set (which tracks are evaluated together)
+with a Policy Algorithm (how to choose among them).  A track carries
+an ordered list of Selection Policies, enabling hierarchical
+selection — for example, first selecting the most active speakers,
+then picking the best video quality for each.
 
-A Selection Set is a group of tracks from which a publisher (or relay)
-forwards a selected subset to the subscriber.  Tracks outside the
-selected subset are not forwarded.  A selection set has three
-components:
+### Selection Policies {#selection-policy-definition}
 
-1. **Tracks**: Each track in a selection set is either *selected*
-   (objects are forwarded) or *deselected* (objects are not forwarded),
-   but remains a member of the set in both states.  This allows
-   efficient reselection without re-subscribing.
-
-2. **Selection Policy**: An extensible algorithm that determines which
-   tracks are selected and which are deselected.  This specification
-   defines two policies — Top-N ({{top-n-policy}}) and Bandwidth-Aware
-   ({{bw-aware-policy}}) — and additional policies can be registered
-   via IANA ({{iana-selection-policies}}).
-
-3. **Switch Mode**: Defines the transition behavior when a track
-   changes between selected and deselected — specifically, when the
-   outgoing track stops forwarding and when the incoming track starts.
+A **Selection Policy** assigns a Selection Set to a Policy Algorithm.
+Each track carries an ordered list of Selection Policies:
 
 ~~~
-+-----------------+                +-----------------+
-|  Selection Set  |                |Selection Policy |
-|    (Tracks)     |--- evaluated --|  (zero or more  |
-|                 |    by          |   in a chain)   |
-+-----------------+                +-----------------+
-       |                                    |
-       |  each track is                     |  determines which
-       |  selected or deselected            |  tracks to select
-       v                                    v
-+-----------------+                +-----------------+
-| Selected Tracks |                |   Switch Mode   |
-| (forwarded)     |                | (how to switch) |
-+-----------------+                +-----------------+
+    +--- Ordered List of Selection Policies per track ---------+
+    |                                                          |
+    |  Policy [1]:                                             |
+    |  +------------------+     +--------------------------+   |
+    |  | Selection Set    |  +  | Policy Algorithm         |   |
+    |  | (SetId, grouping)|     | (Top-N / BW-Aware / ...) |   |
+    |  +------------------+     +--------------------------+   |
+    |            |                                             |
+    |       then evaluate (on survivors only)                  |
+    |            v                                             |
+    |  Policy [2]:                                             |
+    |  +------------------+     +--------------------------+   |
+    |  | Selection Set    |  +  | Policy Algorithm         |   |
+    |  | (SetId, grouping)|     | (Top-N / BW-Aware / ...) |   |
+    |  +------------------+     +--------------------------+   |
+    +----------------------------------------------------------+
 ~~~
 
-Each selection set has a Set ID (varint, unique within the session),
-a set of member tracks, a selected subset, a selection policy, and a
-switch mode.  A track MUST be a member of at most one selection set
-at a time.  An endpoint that receives an assignment of a track to a
-second set MUST respond with REQUEST_ERROR.
+When multiple Selection Policies are present, they are evaluated in
+order: the first policy evaluates all tracks in its sets, and each
+subsequent policy evaluates only the tracks that were selected by the
+previous policy, within its own set groupings.  A track is forwarded
+only if it is selected by every policy in the list.  The state machine
+({{selection-state-machine}}) applies to the final selected state
+after the entire list has been evaluated.
 
-### Track Selection State Machine {#selection-state-machine}
+How Selection Policies are assigned to tracks is described in
+{{selection-set-membership}}.
+
+### Selection Sets {#selection-set-definition}
+
+A **Selection Set** is a group of tracks that are evaluated together
+by a policy algorithm.  Each set is identified by a Set ID (varint,
+unique within the session).
+
+The same track MAY appear in different sets under different Selection
+Policies in its ordered list.  For example, a video track might be in:
+
+- Set 1 under a Top-N policy (competing with all video-hi tracks to
+  determine which users are most active), and
+- Set 10 under a Bandwidth-Aware policy (grouped with the same user's
+  quality alternatives to determine which resolution to forward).
+
+Each track in a selection set is either *selected* (objects are
+forwarded) or *deselected* (objects are not forwarded, but the track
+remains a member of the set).  This allows efficient reselection
+without re-subscribing.
+
+A selection set is created when the first track is assigned to its
+Set ID (via TRACK_SELECTION or SELECTION_SET_ASSIGNMENT).  A set is
+deleted when all its members are removed.
+
+#### Track Selection State Machine {#selection-state-machine}
 
 Every track that is a member of a selection set is in one of three
 states:
@@ -1285,51 +1303,69 @@ enable efficient reselection via PUBLISH_STATE_NOTIFY (Forward=1)
 instead of a new PUBLISH message.  Publishers MAY send PUBLISH_DONE
 to purge old deselected tracks and bound memory usage.
 
-### Selection Set Membership {#selection-set-membership}
+#### Selection Set Membership {#selection-set-membership}
 
-Tracks become members of a selection set through one of two mechanisms:
+Tracks are assigned to selection sets through one of three paths,
+depending on how the track is discovered and subscribed.
+In all cases below, a track's selection policies are expressed as an ordered
+list of entries, where each entry pairs a Set ID with a Policy
+Algorithm.  The entries are evaluated in order as declaration.
 
-Implicit Membership: The subscriber includes a TRACK_SELECTION
-parameter ({{track-selection-param}}) in SUBSCRIBE_TRACKS.  All tracks
-published within the matching namespace are implicitly members of one
-selection set.
 
-Explicit Membership: The subscriber includes a SELECTION_SET_ASSIGNMENT
-parameter ({{selection-set-assignment}}) in SUBSCRIBE, PUBLISH_OK or
-REQUEST_UPDATE. This assigns individual tracks to selection sets
-identified by Set ID.
+SUBSCRIBE_TRACKS + TRACK_SELECTION:
+: The subscriber includes a TRACK_SELECTION parameter
+  ({{track-selection-param}}) in SUBSCRIBE_TRACKS.  Each Policy Entry
+  carries a Set ID and defines a namespace-scoped policy.  All tracks
+  published within the matching namespace are implicitly assigned the
+  ordered list of entries from TRACK_SELECTION.
+
+REQUEST_UPDATE + SELECTION_SET_ASSIGNMENT (after PUBLISH):
+: When tracks are discovered dynamically via PUBLISH, the subscriber
+  first accepts the track with REQUEST_OK, then sends a
+  REQUEST_UPDATE carrying a SELECTION_SET_ASSIGNMENT parameter
+  ({{selection-set-assignment}}).  This assigns the track's ordered
+  list of policy entries with per-track parameters.  When an entry
+  references a Set ID that was defined in TRACK_SELECTION on
+  SUBSCRIBE_TRACKS, it overrides the TRACK_SELECTION entry for that
+  specific track — allowing per-track customization of namespace-wide
+  defaults.
+
+SUBSCRIBE + SELECTION_SET_ASSIGNMENT:
+: For explicit subscriptions where tracks are known upfront, the
+  subscriber includes a SELECTION_SET_ASSIGNMENT parameter
+  ({{selection-set-assignment}}) in SUBSCRIBE.  This assigns the
+  track's ordered list of policy entries directly at subscription
+  time.
 
 A track that is a member of a selection set may be selected or
 deselected by the selection policy as conditions change (e.g., a
 higher-ranked track appears in Top-N, or available bandwidth changes
 in Bandwidth-Aware).
 
-A track is removed from a selection set entirely when the subscription
-ends (UNSUBSCRIBE or PUBLISH_DONE), a new SELECTION_SET_ASSIGNMENT
-with a different Set ID is received (moves the track), or
+A track is removed from its selection sets entirely when the
+subscription ends (UNSUBSCRIBE or PUBLISH_DONE), a new
+SELECTION_SET_ASSIGNMENT replaces its policy entries, or
 SELECTION_SET_ASSIGNMENT with Length=0 is received (removes without
 reassignment).  When a selection set has no remaining members, it is
 deleted.
 
-### Selection Policies {#selection-policies}
+### Selection Policy Algorithms {#selection-policies}
 
-A selection policy is an algorithm that determines which members of a
-selection set are in the selected subset.  Policies are identified by
-a Policy ID (varint) and registered in an IANA registry
+A selection policy algorithm determines which members of a selection
+set are in the selected subset.  Algorithms are identified by a
+Policy ID (varint) and registered in an IANA registry
 ({{iana-selection-policies}}).
 
-An endpoint advertises supported policies in SETUP via the
+An endpoint advertises supported algorithms in SETUP via the
 SELECTION_POLICIES option ({{selection-policies-option}}).  An endpoint
 MUST NOT send a TRACK_SELECTION or SELECTION_SET_ASSIGNMENT with a
 Policy ID not in the peer's SELECTION_POLICIES list.
 
 A TRACK_SELECTION parameter contains a chain of zero or more policy
-entries.  When multiple policies are present, they form a pipeline:
-the first policy operates on all tracks in the set, and each
-subsequent policy further filters the result — only tracks that pass
-every policy in the chain are selected.  The state machine
-({{selection-state-machine}}) applies to the final selected state
-after the entire chain has been evaluated.
+entries.  Each policy entry carries its own Set ID, which groups
+tracks for that policy's evaluation.  When multiple entries are
+present, they form an ordered pipeline as described in
+{{selection-policy-definition}}.
 
 #### Policy 0x0: Top-N Selection {#top-n-policy}
 
@@ -1498,10 +1534,11 @@ it MUST leave the suspending subscription unchanged.
 ### Relay Behavior for Selection Sets {#relay-selection-sets}
 
 A relay implementing selection sets follows the same processing
-pipeline regardless of policy:
+pipeline regardless of policy algorithm:
 
 1. Receive objects from upstream and extract property values.
-2. Evaluate the selection policy for each affected selection set.
+2. Evaluate the ordered Selection Policies for each affected track,
+   processing each policy's selection set in order.
 3. Determine which tracks changed state (promoted or demoted).
 4. Apply the switch mode and send PUBLISH, PUBLISH_STATE_NOTIFY, or
    PUBLISH_DONE as appropriate.
@@ -3310,8 +3347,8 @@ endpoint MUST close the session with a `PROTOCOL_VIOLATION`.
 
 #### SELECTION POLICIES {#selection-policies-option}
 
-The SELECTION_POLICIES option (Type 0x0A) lists the selection policies
-the endpoint supports.  It is encoded as a Count (vi64) followed by
+The SELECTION_POLICIES option (Type 0x0A) lists the selection policy
+algorithms the endpoint supports.  It is encoded as a Count (vi64) followed by
 Count Policy ID (vi64) values.  The default is an empty list, meaning
 selection sets are not supported.  An endpoint MUST NOT send a
 TRACK_SELECTION or SELECTION_SET_ASSIGNMENT with a Policy ID not in
@@ -3540,12 +3577,12 @@ REQUEST_UPDATE Message {
   * Subscription: OBJECT_DELIVERY_TIMEOUT, AUTHORIZATION_TOKEN,
     SUBGROUP_DELIVERY_TIMEOUT, FORWARD, SUBSCRIBER_PRIORITY, LOCATION_FILTER,
     FILL_PARAMETERS, SWITCH_FROM, SUBGROUP_FILTER, OBJECTID_FILTER, PRIORITY_FILTER,
-    OBJECT_PROPERTY_FILTER, NEW_GROUP_REQUEST
+    OBJECT_PROPERTY_FILTER, NEW_GROUP_REQUEST, SELECTION_SET_ASSIGNMENT
   * FETCH: AUTHORIZATION_TOKEN, SUBSCRIBER_PRIORITY
   * PUBLISH_NAMESPACE: AUTHORIZATION_TOKEN
   * SUBSCRIBE_NAMESPACE: AUTHORIZATION_TOKEN, TRACK_NAMESPACE_PREFIX
   * SUBSCRIBE_TRACKS: AUTHORIZATION_TOKEN, FORWARD, TRACK_PROPERTY_FILTER,
-    TRACK_NAMESPACE_PREFIX
+    TRACK_NAMESPACE_PREFIX, TRACK_SELECTION
 
   Range Filters are only allowed from the subscriber (see {{range-filters}}).
 
@@ -3637,7 +3674,7 @@ SUBSCRIBE Message {
   AUTHORIZATION_TOKEN, RENDEZVOUS_TIMEOUT, SUBGROUP_DELIVERY_TIMEOUT, FORWARD,
   SUBSCRIBER_PRIORITY, LOCATION_FILTER, GROUP_ORDER, FILL_PARAMETERS,
   SWITCH_FROM, SUBGROUP_FILTER, OBJECTID_FILTER, PRIORITY_FILTER, OBJECT_PROPERTY_FILTER,
-  NEW_GROUP_REQUEST and INCLUDE_PROPERTIES.
+  NEW_GROUP_REQUEST, INCLUDE_PROPERTIES and SELECTION_SET_ASSIGNMENT.
 
 On successful subscription, the publisher MUST reply with a SUBSCRIBE_OK,
 allowing the subscriber to determine the start group/object when not explicitly
@@ -4455,9 +4492,11 @@ TRACK_PROPERTY_FILTER {
 ### TRACK SELECTION Parameter {#track-selection-param}
 
 The TRACK_SELECTION parameter (Parameter Type 0x30) MAY appear in a
-SUBSCRIBE_TRACKS message or REQUEST_UPDATE for it.  It creates an
-implicit selection set ({{selection-sets}}) spanning all tracks in the
-matching namespace.
+SUBSCRIBE_TRACKS message or REQUEST_UPDATE for it.  It declares
+selection policies spanning all tracks in the matching namespace.
+These serve as defaults for every track in the namespace; a
+SELECTION_SET_ASSIGNMENT in REQUEST_OK (PUBLISH_OK) or REQUEST_UPDATE
+MAY override a specific entry for an individual track.
 
 ~~~
 TRACK_SELECTION {
@@ -4468,6 +4507,7 @@ TRACK_SELECTION {
 }
 
 Policy Entry {
+  Set ID (vi64),
   Policy ID (vi64),
   Switch Mode (vi64),
   [Policy-specific fields]
@@ -4485,10 +4525,10 @@ MAX_CHAINED_POLICIES value.  An endpoint that receives a
 TRACK_SELECTION with a Policy Count exceeding this limit MUST close
 the session with a `PROTOCOL_VIOLATION`.
 
-Each Policy Entry contains a Policy ID identifying the selection
-policy ({{selection-policies}}), a Switch Mode identifying how
-transitions are executed ({{switch-modes}}), and policy-specific
-fields.
+Each Policy Entry contains a Set ID that groups tracks for this
+policy's evaluation, a Policy ID identifying the selection policy
+({{selection-policies}}), a Switch Mode identifying how transitions
+are executed ({{switch-modes}}), and policy-specific fields.
 
 For Policy 0x0 (Top-N), the policy-specific fields are:
 
@@ -4532,26 +4572,44 @@ Policy ID MUST close the session with `PROTOCOL_VIOLATION`.
 ### SELECTION SET ASSIGNMENT Parameter {#selection-set-assignment}
 
 The SELECTION_SET_ASSIGNMENT parameter (Parameter Type 0x36) MAY
-appear in PUBLISH_OK or REQUEST_UPDATE (for a subscription).  It
-assigns the track to an explicit selection set
-({{selection-sets}}).
+appear in SUBSCRIBE or REQUEST_UPDATE (for a subscription).  It
+assigns the track to one or more selection sets ({{selection-sets}})
+by providing an ordered list of Selection Entry values.  When an
+entry references a Set ID that was defined in TRACK_SELECTION on
+SUBSCRIBE_TRACKS, it overrides that entry's parameters for this
+specific track.
 
 ~~~
 SELECTION_SET_ASSIGNMENT {
   Type (vi64) = 0x36,
   Length (vi64),
+  Entry Count (vi64),
+  Selection Entry (..) ...,
+}
+
+Selection Entry {
   Set ID (vi64),
   Policy ID (vi64),
   [Policy-specific fields]
 }
 ~~~
 
-A Length of 0 removes the track from its current selection set.
+A Length of 0 removes the track from all of its current selection
+sets.
 
-Set ID identifies the selection set.  Tracks with the same Set ID are
-in the same set.  Policy ID identifies the selection policy.
+Entry Count is the number of Selection Entry values that follow.
+Each Selection Entry contains a Set ID identifying the selection set
+and a Policy ID identifying the selection policy, followed by
+policy-specific fields.  The entries are ordered and correspond to the
+policy chain: each entry's policy is evaluated in order as described
+in {{selection-policies}}.
 
-For Policy 0x1 (Bandwidth-Aware):
+For Policy 0x0 (Top-N), the policy-specific fields are empty.  The
+Set ID references a Top-N set whose parameters (Property Type,
+MaxTracks) are defined in the TRACK_SELECTION parameter on
+SUBSCRIBE_TRACKS.
+
+For Policy 0x1 (Bandwidth-Aware), the policy-specific fields are:
 
 ~~~
   Throughput Threshold (vi64),
@@ -6321,7 +6379,7 @@ types are skipped by parsing a variable-length integer value.
   encounter different semantics for the same code points, creating potential
   collision risks.
 
-## Selection Policies {#iana-selection-policies}
+## Selection Policy Algorithms {#iana-selection-policies}
 
 This document establishes the "MOQT Selection Policies" registry.
 The registration policy is Specification Required
